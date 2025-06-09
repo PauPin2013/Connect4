@@ -1,7 +1,11 @@
+// app/build.gradle.kts
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    // Se recomienda añadir el plugin de Google Services aquí si aún no está para Firebase
+    // id("com.google.gms.google-services") // Descomentar cuando integres Firebase
 }
 
 android {
@@ -37,6 +41,11 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging { // Esto puede ayudar con problemas de archivos duplicados
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
@@ -49,6 +58,12 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+
+    // --- NUEVAS DEPENDENCIAS AÑADIDAS PARA VIEWMODEL CON COMPOSE ---
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    // --- FIN DE NUEVAS DEPENDENCIAS ---
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -56,4 +71,9 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Dependencias de Firebase (se pueden añadir aquí cuando estés listo)
+    // implementation(platform(libs.firebase.bom))
+    // implementation(libs.firebase.firestore.ktx)
+    // implementation(libs.firebase.auth.ktx)
 }
