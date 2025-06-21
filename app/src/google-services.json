@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "641576316115",
+    "project_id": "connect4-cb681",
+    "storage_bucket": "connect4-cb681.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:641576316115:android:2bcc8c2e39ab3da8c63826",
+        "android_client_info": {
+          "package_name": "com.example.connect4"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB18hceJMkLupX66qyzwLEcvjOzyvMh5us"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
