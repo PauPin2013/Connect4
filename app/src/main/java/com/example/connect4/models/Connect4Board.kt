@@ -8,10 +8,11 @@ data class Connect4Board(
 
     fun dropPiece(column: Int, player: Int): Connect4Board {
         val newCells = cells.map { it.toMutableList() }.toMutableList()
-        for (r in rows - 1 downTo 0) {
-            if (newCells[r][column] == 0) {
-                newCells[r][column] = player
-                break
+        for (r in rows - 1 downTo 0) { // Itera desde abajo hacia arriba
+            if (newCells[r][column] == 0) { // Encuentra la primera celda vacía
+                newCells[r][column] = player // Coloca la ficha del jugador
+                println("Ficha del jugador $player colocada en ($r, $column)") // <-- Añadir para depuración
+                break // Sale del bucle una vez que la ficha se coloca
             }
         }
         return Connect4Board(newCells)

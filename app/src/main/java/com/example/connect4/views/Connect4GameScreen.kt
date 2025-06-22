@@ -1,9 +1,5 @@
 package com.example.connect4.views
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.ArrowBack // Importar el ícono de flecha hacia atrás
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,12 +21,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connect4.models.GameState
 import com.example.connect4.viewmodels.Connect4ViewModel
-import kotlinx.coroutines.launch
+import android.util.Log // Importar para logs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Connect4GameScreen(
-    onLogout: () -> Unit,
+    onNavigateBackToLobby: () -> Unit, // CAMBIO: Nueva función para navegar de vuelta al lobby
     connect4ViewModel: Connect4ViewModel = viewModel()
 ) {
     val board by connect4ViewModel.board.collectAsState()
@@ -40,12 +36,20 @@ fun Connect4GameScreen(
     val onlineGame by connect4ViewModel.onlineGame.collectAsState()
     val isMyTurn by connect4ViewModel.isMyTurn.collectAsState()
     val message by connect4ViewModel.message.collectAsState()
-    val questionAnsweredCorrectly by connect4ViewModel.questionAnsweredCorrectly.collectAsState()
 
-    var userAnswer by remember { mutableStateOf("") }
-
-    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    DisposableEffect(onlineGame, gameState, isMyTurn) {
+        Log.d("Connect4GameScreen", "UI Update - onlineGame: ${onlineGame?.gameId}, gameState: $gameState, isMyTurn: $isMyTurn")
+        onDispose { }
+    }
+
+    LaunchedEffect(Unit) {
+        if (onlineGame == null) {
+            Log.d("Connect4GameScreen", "Inicializando modo offline si onlineGame es null.")
+            connect4ViewModel.resetGame()
+        }
+    }
 
     val displayMessage = when (gameState) {
         is GameState.Winner -> {
@@ -59,12 +63,7 @@ fun Connect4GameScreen(
         }
         GameState.Draw -> "¡Es un empate!"
         is GameState.AskingQuestion -> {
-            val word = (gameState as GameState.AskingQuestion).word
-            if (onlineGame != null && onlineGame?.currentPlayerId != currentUserId) {
-                "Esperando la respuesta de ${if (onlineGame?.player1Id == onlineGame?.currentPlayerId) onlineGame?.player1Name else onlineGame?.player2Name}..."
-            } else {
-                "¿Cuál es la traducción de '${word.word}'?"
-            }
+            "Juego en modo pregunta (temporalmente deshabilitado)."
         }
         GameState.Playing -> {
             if (onlineGame != null) {
@@ -88,27 +87,14 @@ fun Connect4GameScreen(
         else -> Color.White
     }
 
-    LaunchedEffect(message) {
-        message?.let {
-            scope.launch {
-                snackbarHostState.showSnackbar(
-                    message = it,
-                    actionLabel = "Cerrar",
-                    duration = SnackbarDuration.Short
-                )
-            }
-        }
-    }
-
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Conecta 4", color = Color.White) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF2C3E50)),
-                actions = {
-                    IconButton(onClick = onLogout) {
-                        Icon(Icons.Default.Logout, contentDescription = "Cerrar sesión", tint = Color.White)
+                navigationIcon = { // Usamos navigationIcon para el botón de "atrás"
+                    IconButton(onClick = onNavigateBackToLobby) { // CAMBIO: Llama a onNavigateBackToLobby
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver al Lobby", tint = Color.White)
                     }
                 }
             )
@@ -166,56 +152,24 @@ fun Connect4GameScreen(
             BoardView(
                 board = board.cells,
                 onColumnClick = { col ->
-                    val canDropPieceAfterQuestion = (questionAnsweredCorrectly == true)
                     val isMyOnlineTurn = (onlineGame != null && isMyTurn)
                     val isOnlineGameWaiting = (onlineGame != null && onlineGame?.status == "waiting")
 
                     when {
-                        gameState is GameState.AskingQuestion && isMyOnlineTurn -> {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Por favor, responde la pregunta de vocabulario primero.",
-                                    actionLabel = "Cerrar"
-                                )
-                            }
-                        }
-                        isMyOnlineTurn && canDropPieceAfterQuestion -> {
-                            connect4ViewModel.proceedWithDropPiece(col)
-                        }
-                        isOnlineGameWaiting -> {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Esperando al segundo jugador para iniciar la partida...",
-                                    actionLabel = "Cerrar"
-                                )
-                            }
-                        }
-                        onlineGame != null && !isMyOnlineTurn -> {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "No es tu turno.",
-                                    actionLabel = "Cerrar"
-                                )
-                            }
-                        }
                         onlineGame == null && gameState == GameState.Playing -> {
                             connect4ViewModel.dropPiece(col)
                         }
-                        onlineGame != null && questionAnsweredCorrectly == false -> {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Respondiste incorrectamente. Tu turno fue pasado.",
-                                    actionLabel = "Cerrar"
-                                )
-                            }
+                        onlineGame != null && isMyOnlineTurn && !isOnlineGameWaiting -> {
+                            connect4ViewModel.proceedWithDropPiece(col)
+                        }
+                        onlineGame != null && !isMyOnlineTurn -> {
+                            Log.d("Connect4GameScreen", "No es tu turno. Intento de movimiento en columna $col.")
+                        }
+                        onlineGame != null && isOnlineGameWaiting -> {
+                            Log.d("Connect4GameScreen", "Esperando al segundo jugador. Intento de movimiento en columna $col.")
                         }
                         else -> {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "No se puede hacer un movimiento en este momento.",
-                                    actionLabel = "Cerrar"
-                                )
-                            }
+                            Log.d("Connect4GameScreen", "No se puede hacer un movimiento en este momento. Estado actual: $gameState. Intento en columna $col.")
                         }
                     }
                 }
@@ -223,105 +177,55 @@ fun Connect4GameScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            AnimatedVisibility(
-                visible = gameState is GameState.AskingQuestion && (onlineGame == null || (onlineGame != null && isMyTurn)),
-                enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(durationMillis = 500)),
-                exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(durationMillis = 500))
-            ) {
-                val currentQuestion = (gameState as? GameState.AskingQuestion)?.word
-                if (currentQuestion != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF34495E))
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Traduce: '${currentQuestion.word}'",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = userAnswer,
-                            onValueChange = { userAnswer = it },
-                            label = { Text("Tu respuesta", color = Color.LightGray) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF2ECC71),
-                                unfocusedBorderColor = Color.Gray,
-                                cursorColor = Color(0xFF2ECC71),
-                                focusedLabelColor = Color(0xFF2ECC71),
-                                unfocusedLabelColor = Color.Gray,
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedContainerColor = Color(0xFF4A6572),
-                                unfocusedContainerColor = Color(0xFF4A6572)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                connect4ViewModel.checkQuestionAnswer(userAnswer)
-                                userAnswer = ""
-                            },
-                            enabled = userAnswer.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2ECC71))
-                        ) {
-                            Text("Enviar respuesta", color = Color.White)
-                        }
-                        questionAnsweredCorrectly?.let { isCorrect ->
-                            Text(
-                                text = if (isCorrect) "¡Correcto!" else "Incorrecto.",
-                                color = if (isCorrect) Color.Green else Color.Red,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (gameState is GameState.Winner || gameState == GameState.Draw || onlineGame == null) {
-                    Button(
-                        onClick = { connect4ViewModel.resetGame() },
-                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Reiniciar", color = Color.White)
-                    }
-                } else if (onlineGame != null && onlineGame?.player1Id == currentUserId && onlineGame?.status != "playing") {
-                    Button(
-                        onClick = { connect4ViewModel.resetOnlineGame() },
-                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Reiniciar Partida Online", textAlign = TextAlign.Center, color = Color.White)
-                    }
+                Button(
+                    onClick = {
+                        Log.d("Connect4GameScreen", "Botón 'Reiniciar Juego Local' clickeado.")
+                        connect4ViewModel.resetGame()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Reiniciar Local", color = Color.White, textAlign = TextAlign.Center)
                 }
 
-                if (onlineGame != null && onlineGame?.player1Id == currentUserId) {
-                    Button(
-                        onClick = { connect4ViewModel.deleteOnlineGame() },
-                        modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Eliminar Partida", textAlign = TextAlign.Center, color = Color.White)
+                if (onlineGame != null) {
+                    if (onlineGame?.player1Id == currentUserId && onlineGame?.status != "playing") {
+                        Button(
+                            onClick = {
+                                Log.d("Connect4GameScreen", "Botón 'Reiniciar Partida Online' clickeado.")
+                                connect4ViewModel.resetOnlineGame()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Reiniciar Online", textAlign = TextAlign.Center, color = Color.White)
+                        }
+                    }
+                    if (onlineGame?.player1Id == currentUserId) {
+                        Button(
+                            onClick = {
+                                Log.d("Connect4GameScreen", "Botón 'Eliminar Partida' clickeado.")
+                                connect4ViewModel.deleteOnlineGame()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC0392B)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Eliminar Partida", textAlign = TextAlign.Center, color = Color.White)
+                        }
                     }
                 }
             }

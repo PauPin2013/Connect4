@@ -31,20 +31,16 @@ android {
             )
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
     kotlinOptions {
         jvmTarget = "11"
     }
-
     buildFeatures {
         compose = true
     }
-
     composeOptions {
         kotlinCompilerExtensionVersion = "2.0.0"
     }
@@ -59,11 +55,21 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
-    implementation(libs.kotlinx.coroutines.play.services)
+
+    implementation(libs.androidx.material.icons.extended) // Asegúrate de que esté aquí
+    implementation(libs.kotlinx.coroutines.play.services) // Asegúrate de que esté aquí
+
+    // AÑADIDO: Gson
+    implementation(libs.gson)
+
+    // Navigation Compose
     implementation(libs.androidx.navigation.compose)
+
+    // Firebase BoM
     implementation(platform(libs.firebase.bom))
+    // Firebase Authentication
     implementation(libs.firebase.auth.ktx)
+    // Firebase Firestore
     implementation(libs.firebase.firestore.ktx)
 
     testImplementation(libs.junit)

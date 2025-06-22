@@ -13,13 +13,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connect4.viewmodels.Connect4ViewModel
+import com.example.connect4.viewmodels.AuthViewModel // IMPORTAR ESTO
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameLobbyScreen(
     onStartGame: () -> Unit,
-    connect4ViewModel: Connect4ViewModel = viewModel()
+    onLogout: () -> Unit, // AÑADIDO: Callback para cerrar sesión
+    connect4ViewModel: Connect4ViewModel = viewModel(),
+    authViewModel: AuthViewModel = viewModel() // AÑADIDO: Instancia de AuthViewModel
 ) {
     var gameIdInput by remember { mutableStateOf("") }
 
@@ -163,6 +166,22 @@ fun GameLobbyScreen(
                         fontSize = 14.sp
                     )
                 }
+            }
+            Spacer(modifier = Modifier.height(32.dp)) // Espacio para el nuevo botón de logout
+
+            // Nuevo botón para cerrar sesión
+            Button(
+                onClick = {
+                    authViewModel.logout() // Llama a la función de logout del AuthViewModel
+                    onLogout() // Llama al callback para navegar a la pantalla de autenticación
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(55.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Cerrar Sesión", fontSize = 18.sp, color = Color.White)
             }
         }
     }
