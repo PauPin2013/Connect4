@@ -166,6 +166,41 @@ class Connect4ViewModel : ViewModel() {
                     _message.value = "Turno del Jugador ${_currentPlayer.value}"
                     Log.d("Connect4ViewModel", "Turno cambiado a Jugador ${_currentPlayer.value} (Offline)")
                 }
+                if (_gameState.value == GameState.Playing && _onlineGame.value == null && _currentPlayer.value == 2) {
+                    delay(500) // Pausa para simular pensamiento
+
+                    val validColumns = (0 until boardColumns).filter { _board.value.getCell(0, it) == 0 }
+
+                    // Paso 1: ¿Puede ganar la IA?
+                    val winColumn = validColumns.firstOrNull { col ->
+                        val simulatedBoard = _board.value.dropPiece(col, 2)
+                        checkWinner(simulatedBoard) == 2
+                    }
+
+                    // Paso 2: ¿Debe bloquear al jugador?
+                    val blockColumn = validColumns.firstOrNull { col ->
+                        val simulatedBoard = _board.value.dropPiece(col, 1)
+                        checkWinner(simulatedBoard) == 1
+                    }
+
+                    val selectedColumn = winColumn ?: blockColumn ?: validColumns.random()
+
+                    val aiBoard = _board.value.dropPiece(selectedColumn, 2)
+                    _board.value = aiBoard
+
+                    val winnerAI = checkWinner(aiBoard)
+                    if (winnerAI != 0) {
+                        _gameState.value = GameState.Winner(winnerAI)
+                        _message.value = "¡El Jugador $winnerAI ha ganado!"
+                    } else if (isBoardFull(aiBoard)) {
+                        _gameState.value = GameState.Draw
+                        _message.value = "¡Es un empate!"
+                    } else {
+                        _currentPlayer.value = 1
+                        _message.value = "Turno del Jugador 1"
+                    }
+                }
+
             }
         }
     }
