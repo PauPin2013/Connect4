@@ -12,9 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-
 class AuthViewModel : ViewModel() {
-
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 
@@ -40,12 +38,10 @@ class AuthViewModel : ViewModel() {
             try {
                 val result = auth.createUserWithEmailAndPassword(email, password).await()
                 val firebaseUser = result.user
-
                 firebaseUser?.let { user ->
                     val newUser = User(uid = user.uid, email = user.email ?: "", username = user.email?.split("@")?.get(0) ?: "Player")
                     db.collection("users").document(user.uid).set(newUser).await()
                 }
-
                 _currentUser.value = auth.currentUser
             } catch (e: Exception) {
                 _error.value = e.localizedMessage

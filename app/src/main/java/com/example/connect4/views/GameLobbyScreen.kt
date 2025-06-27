@@ -12,23 +12,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.connect4.viewmodels.Connect4ViewModel
-import com.example.connect4.viewmodels.AuthViewModel // IMPORTAR ESTO
+import com.example.connect4.viewmodels.OnlineConnect4ViewModel
+import com.example.connect4.viewmodels.AuthViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameLobbyScreen(
-    onStartGame: () -> Unit,
-    onLogout: () -> Unit, // AÑADIDO: Callback para cerrar sesión
-    connect4ViewModel: Connect4ViewModel = viewModel(),
-    authViewModel: AuthViewModel = viewModel() // AÑADIDO: Instancia de AuthViewModel
+    onStartOfflineGame: () -> Unit, // Callback para iniciar partida offline
+    onStartOnlineGame: (String) -> Unit, // Callback para iniciar partida online, con gameId
+    onLogout: () -> Unit,
+    onlineConnect4ViewModel: OnlineConnect4ViewModel = viewModel(),
+    authViewModel: AuthViewModel = viewModel()
 ) {
     var gameIdInput by remember { mutableStateOf("") }
-
-    val isLoading by connect4ViewModel.isLoading.collectAsState()
-    val message by connect4ViewModel.message.collectAsState()
-    val onlineGame by connect4ViewModel.onlineGame.collectAsState()
+    val isLoading by onlineConnect4ViewModel.isLoading.collectAsState()
+    val message by onlineConnect4ViewModel.message.collectAsState()
+    val onlineGame by onlineConnect4ViewModel.onlineGame.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -47,8 +47,8 @@ fun GameLobbyScreen(
 
     LaunchedEffect(onlineGame) {
         onlineGame?.let {
-            if (it.status == "playing") {
-                onStartGame()
+            if (it.status == "playing" && it.gameId.isNotBlank()) {
+                onStartOnlineGame(it.gameId) // Pasa el gameId cuando la partida empieza
             }
         }
     }
@@ -64,19 +64,21 @@ fun GameLobbyScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Lobby de Conecta 4 Online",
+                text = "Lobby de Conecta 4", // Título general
                 color = Color.White,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
+            // Sección de Jugar Offline
             Button(
                 onClick = {
-                    connect4ViewModel.resetGame()
-                    onStartGame()
+                    // No necesitas resetear connect4ViewModel.resetGame() aquí,
+                    // el OfflineConnect4ViewModel se encarga de su propio estado al ser creado/reseteado
+                    onStartOfflineGame()
                 },
-                enabled = !isLoading,
+                enabled = !isLoading, // Los botones no se habilitan mientras carga una operación online
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(55.dp),
@@ -86,17 +88,19 @@ fun GameLobbyScreen(
                 Text("Jugar Offline", fontSize = 18.sp, color = Color.White)
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp)) // Espacio entre offline y online
 
             Text(
-                text = "O únete/crea una partida online",
-                color = Color.LightGray,
-                fontSize = 16.sp,
+                text = "Partida Online", // Título para la sección online
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
+            // Botón para Crear Partida Online
             Button(
-                onClick = { connect4ViewModel.createOnlineGame() },
+                onClick = { onlineConnect4ViewModel.createOnlineGame() },
                 enabled = !isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -107,16 +111,17 @@ fun GameLobbyScreen(
                 if (isLoading && onlineGame == null) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 } else {
-                    Text("Crear Partida Online", fontSize = 18.sp, color = Color.White)
+                    Text("Crear Partida", fontSize = 18.sp, color = Color.White)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Campo y botón para Unirse a Partida
             OutlinedTextField(
                 value = gameIdInput,
                 onValueChange = { gameIdInput = it },
-                label = { Text("ID de partida para unirte", color = Color.White) },
+                label = { Text("ID de partida", color = Color.White) }, // Label más corto
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -136,7 +141,7 @@ fun GameLobbyScreen(
             )
 
             Button(
-                onClick = { connect4ViewModel.joinOnlineGame(gameIdInput) },
+                onClick = { onlineConnect4ViewModel.joinOnlineGame(gameIdInput) },
                 enabled = !isLoading && gameIdInput.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -161,19 +166,21 @@ fun GameLobbyScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Comparte este ID con tu oponente para que se una.",
+                        text = "Comparte este ID con tu oponente.",
                         color = Color.LightGray,
-                        fontSize = 14.sp
+                        fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp)) // Espacio para el nuevo botón de logout
 
-            // Nuevo botón para cerrar sesión
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Botón para Cerrar Sesión
             Button(
                 onClick = {
-                    authViewModel.logout() // Llama a la función de logout del AuthViewModel
-                    onLogout() // Llama al callback para navegar a la pantalla de autenticación
+                    authViewModel.logout()
+                    onLogout()
                 },
                 modifier = Modifier
                     .fillMaxWidth()

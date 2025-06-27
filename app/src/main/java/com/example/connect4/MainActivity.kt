@@ -9,17 +9,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember // Importar remember
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.connect4.viewmodels.AuthViewModel
-import com.example.connect4.viewmodels.Connect4ViewModel // Importar Connect4ViewModel
-import com.example.connect4.views.Connect4GameScreen
+import com.example.connect4.viewmodels.OfflineConnect4ViewModel
+import com.example.connect4.viewmodels.OnlineConnect4ViewModel
 import com.example.connect4.views.GameLobbyScreen
 import com.example.connect4.views.LoginScreen
+import com.example.connect4.views.OfflineConnect4GameScreen
+import com.example.connect4.views.OnlineConnect4GameScreen
 import com.example.connect4.views.RegisterScreen
 import com.google.firebase.FirebaseApp
 
@@ -27,7 +29,9 @@ object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val LOBBY = "lobby"
-    const val GAME = "game"
+    const val OFFLINE_GAME = "offline_game"
+    const val ONLINE_GAME = "online_game/{gameId}"
+    const val ONLINE_GAME_BASE = "online_game"
 }
 
 class MainActivity : ComponentActivity() {
@@ -50,12 +54,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Connect4App(
     authViewModel: AuthViewModel = viewModel(),
-    connect4ViewModel: Connect4ViewModel = viewModel() // Instancia Connect4ViewModel aquí
+    offlineConnect4ViewModel: OfflineConnect4ViewModel = viewModel(),
+    onlineConnect4ViewModel: OnlineConnect4ViewModel = viewModel()
 ) {
     val navController = rememberNavController()
     val currentUser by authViewModel.currentUser.collectAsState()
-
-    // Usar remember para que startDestination no cambie en cada recomposición innecesariamente.
     val startDestination = remember(currentUser) {
         if (currentUser != null) Routes.LOBBY else Routes.LOGIN
     }
@@ -83,35 +86,48 @@ fun Connect4App(
         }
         composable(Routes.LOBBY) {
             GameLobbyScreen(
-                onStartGame = { navController.navigate(Routes.GAME) },
-                onLogout = { // Implementación del callback de logout para GameLobbyScreen
+                onStartOfflineGame = { navController.navigate(Routes.OFFLINE_GAME) },
+                onStartOnlineGame = { gameId ->
+                    navController.navigate("${Routes.ONLINE_GAME_BASE}/$gameId")
+                },
+                onLogout = {
                     authViewModel.logout()
                     navController.navigate(Routes.LOGIN) {
-                        popUpTo(navController.graph.id) { inclusive = true } // Limpia toda la pila de navegación
+                        popUpTo(navController.graph.id) { inclusive = true }
                     }
                 },
-                connect4ViewModel = connect4ViewModel, // Pasa la instancia del ViewModel
-                authViewModel = authViewModel // Pasa la instancia del AuthViewModel
+                onlineConnect4ViewModel = onlineConnect4ViewModel,
+                authViewModel = authViewModel
             )
         }
-        composable(Routes.GAME) {
-            Connect4GameScreen(
-                onNavigateBackToLobby = { // CAMBIO: Callback para volver al lobby
-                    // Al volver del juego, queremos limpiar el estado del juego para evitar problemas
-                    // Puedes decidir si resetear connect4ViewModel.resetGame() aquí o en el GameLobbyScreen
-                    // al entrar de nuevo. Por ahora, asumimos que resetGame() ya se llama al iniciar partida offline
-                    // o que el estado online se maneja adecuadamente.
-                    connect4ViewModel.stopListeningForGameUpdates() // Detener escucha de la partida online
-                    connect4ViewModel.resetGame() // Opcional: resetear el estado del juego al salir
+        composable(Routes.OFFLINE_GAME) {
+            OfflineConnect4GameScreen(
+                onNavigateBackToLobby = {
                     navController.navigate(Routes.LOBBY) {
-                        // popUpTo(Routes.LOBBY) { inclusive = true } // Esto puede recrear el lobby.
-                        // Considera si quieres recrear el lobby cada vez o simplemente volver.
-                        // Para este caso, solo navegamos de regreso. Si necesitas limpiar, usa popUpTo.
-                        // Para una experiencia de "volver", a menudo no se limpia la pila.
+                        popUpTo(Routes.LOBBY) { inclusive = true }
                     }
                 },
-                connect4ViewModel = connect4ViewModel // Pasa la instancia del ViewModel
+                offlineConnect4ViewModel = offlineConnect4ViewModel
+            )
+        }
+        composable(
+            route = Routes.ONLINE_GAME,
+            arguments = listOf(androidx.navigation.navArgument("gameId") { defaultValue = "" })
+        ) { backStackEntry ->
+            val gameId = backStackEntry.arguments?.getString("gameId")
+            OnlineConnect4GameScreen(
+                gameId = gameId,
+                onNavigateBackToLobby = {
+                    onlineConnect4ViewModel.stopListeningForGameUpdates()
+                    navController.navigate(Routes.LOBBY) {
+                        popUpTo(Routes.LOBBY) { inclusive = true }
+                    }
+                },
+                onlineConnect4ViewModel = onlineConnect4ViewModel
             )
         }
     }
 }
+
+
+

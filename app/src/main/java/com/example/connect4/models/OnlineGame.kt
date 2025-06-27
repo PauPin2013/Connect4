@@ -1,8 +1,7 @@
-// Paquete y otros imports
 package com.example.connect4.models
 
 import com.google.firebase.firestore.DocumentId
-import com.google.firebase.firestore.Exclude // <-- 1. AÑADE ESTA IMPORTACIÓN
+import com.google.firebase.firestore.Exclude
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -17,8 +16,11 @@ data class OnlineGame(
     val status: String = "waiting",
     val winnerId: String? = null,
     val lastMoveColumn: Int? = null,
-    val lastQuestion: VocabularyWord? = null,
-    val isQuestionCorrect: Boolean? = null,
+    // Nuevos campos para el vocabulario
+    val currentQuestionWord: String? = null, // La palabra a traducir
+    val currentQuestionTranslation: String? = null, // La traducción correcta
+    val questionAnsweredCorrectly: Boolean? = null, // Si la última pregunta fue respondida correctamente por el jugador en turno
+    val questionAskedToPlayerId: String? = null, // ID del jugador al que se le hizo la pregunta
     val createdAt: Long = System.currentTimeMillis()
 ) {
     @get:Exclude // <-- 2. AÑADE ESTA ANOTACIÓN

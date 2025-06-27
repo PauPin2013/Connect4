@@ -6,5 +6,6 @@ sealed class GameState {
     object Draw : GameState()
     object WaitingToStart : GameState()
     object Paused : GameState()
-    data class AskingQuestion(val word: VocabularyWord) : GameState()
+    // Nuevo estado para cuando se está haciendo una pregunta de vocabulario
+    data class AskingQuestion(val word: String) : GameState()
 }
