@@ -12,118 +12,151 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
+// ViewModel for handling offline Connect4 game logic.
 class OfflineConnect4ViewModel : ViewModel() {
+    // Board dimensions.
     private val boardRows = 6
     private val boardColumns = 7
+    // Initial state of the board cells.
     private val initialBoardCells = List(boardRows) { List(boardColumns) { 0 } }
 
+    // MutableStateFlow for the game board.
     private val _board = MutableStateFlow(Connect4Board(initialBoardCells))
+    // Public StateFlow for observing the game board.
     val board: StateFlow<Connect4Board> = _board.asStateFlow()
 
+    // MutableStateFlow for the current player.
     private val _currentPlayer = MutableStateFlow(1)
+    // Public StateFlow for observing the current player.
     val currentPlayer: StateFlow<Int> = _currentPlayer.asStateFlow()
 
+    // MutableStateFlow for the current game state.
     private val _gameState = MutableStateFlow<GameState>(GameState.WaitingToStart)
+    // Public StateFlow for observing the game state.
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
+    // MutableStateFlow for displaying messages to the user.
     private val _message = MutableStateFlow<String?>(null)
+    // Public StateFlow for observing messages.
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    // Initialize the game when the ViewModel is created.
     init {
-        resetGame() // Start in playing mode for offline by default
+        resetGame()
     }
 
+    // Resets the game to its initial state.
     fun resetGame() {
         _board.value = Connect4Board(initialBoardCells)
         _currentPlayer.value = 1
         _gameState.value = GameState.Playing
         _message.value = null
-        Log.d("OfflineConnect4ViewModel", "resetGame() llamado. Estado: Playing")
+        Log.d("OfflineConnect4ViewModel", "resetGame() called. State: Playing")
     }
 
+    /**
+     * Drops a piece into the specified column.
+     * Handles game state transitions, win conditions, and AI moves.
+     * @param column The column where the piece will be dropped.
+     */
     fun dropPiece(column: Int) {
         viewModelScope.launch {
+            // Prevent moves if game is not in Playing state.
             if (_gameState.value != GameState.Playing) {
-                _message.value = "El juego no está en estado de juego. Reinicia."
-                Log.d("OfflineConnect4ViewModel", "DropPiece: GameState no es Playing. Actual: ${_gameState.value}")
+                _message.value = "Game is not in playing state. Please restart."
+                Log.d("OfflineConnect4ViewModel", "DropPiece: GameState is not Playing. Current: ${_gameState.value}")
                 return@launch
             }
 
+            // Check if the column is full.
             if (_board.value.getCell(0, column) != 0) {
-                _message.value = "Columna llena. Elige otra."
+                _message.value = "Column is full. Choose another one."
                 return@launch
             }
 
+            // Drop the piece and update the board.
             val currentBoard = _board.value
             val newBoard = currentBoard.dropPiece(column, _currentPlayer.value)
-            _board.value = newBoard // Actualización del tablero
+            _board.value = newBoard
 
+            // Check for a winner after the move.
             val winner = checkWinner(newBoard)
             if (winner != 0) {
                 _gameState.value = GameState.Winner(winner)
-                _message.value = "¡El Jugador $winner ha ganado!"
-                Log.d("OfflineConnect4ViewModel", "Ganador en modo offline: Jugador $winner")
+                _message.value = "Player $winner has won!"
+                Log.d("OfflineConnect4ViewModel", "Offline winner: Player $winner")
             } else if (isBoardFull(newBoard)) {
+                // Check for a draw if no winner.
                 _gameState.value = GameState.Draw
-                _message.value = "¡Es un empate!"
-                Log.d("OfflineConnect4ViewModel", "Empate en modo offline.")
+                _message.value = "It's a draw!"
+                Log.d("OfflineConnect4ViewModel", "Offline draw.")
             } else {
+                // Switch to the next player's turn.
                 _currentPlayer.value = if (_currentPlayer.value == 1) 2 else 1
-                _message.value = "Turno del Jugador ${_currentPlayer.value}"
-                Log.d("OfflineConnect4ViewModel", "Turno cambiado a Jugador ${_currentPlayer.value}")
+                _message.value = "Player ${_currentPlayer.value}'s turn"
+                Log.d("OfflineConnect4ViewModel", "Turn changed to Player ${_currentPlayer.value}")
 
-                // Lógica de la IA (Jugador 2)
+                // AI logic for Player 2.
                 if (_gameState.value == GameState.Playing && _currentPlayer.value == 2) {
-                    delay(500) // Pausa para simular pensamiento de la IA
+                    delay(500) // Simulate AI thinking time. [Image of a thinking robot]
                     val validColumns = (0 until boardColumns).filter { _board.value.getCell(0, it) == 0 }
 
                     if (validColumns.isNotEmpty()) {
-                        // Paso 1: ¿Puede ganar la IA?
+                        // Step 1: Can AI win?
                         val winColumn = validColumns.firstOrNull { col ->
                             val simulatedBoard = _board.value.dropPiece(col, 2)
                             checkWinner(simulatedBoard) == 2
                         }
 
-                        // Paso 2: ¿Debe bloquear al jugador?
+                        // Step 2: Must AI block the opponent?
                         val blockColumn = validColumns.firstOrNull { col ->
                             val simulatedBoard = _board.value.dropPiece(col, 1)
                             checkWinner(simulatedBoard) == 1
                         }
 
+                        // Select winning move, blocking move, or a random valid column.
                         val selectedColumn = winColumn ?: blockColumn ?: validColumns.random()
                         val aiBoard = _board.value.dropPiece(selectedColumn, 2)
                         _board.value = aiBoard
 
+                        // Check for winner or draw after AI's move.
                         val winnerAI = checkWinner(aiBoard)
                         if (winnerAI != 0) {
                             _gameState.value = GameState.Winner(winnerAI)
-                            _message.value = "¡El Jugador $winnerAI ha ganado!"
+                            _message.value = "Player $winnerAI has won!"
                         } else if (isBoardFull(aiBoard)) {
                             _gameState.value = GameState.Draw
-                            _message.value = "¡Es un empate!"
+                            _message.value = "It's a draw!"
                         } else {
+                            // Switch back to Player 1's turn.
                             _currentPlayer.value = 1
-                            _message.value = "Turno del Jugador 1"
+                            _message.value = "Player 1's turn"
                         }
                     } else {
-                        // Si no hay columnas válidas, es un empate (esto ya debería estar cubierto por isBoardFull)
+                        // If no valid columns, it's a draw (should be covered by isBoardFull).
                         _gameState.value = GameState.Draw
-                        _message.value = "¡Es un empate!"
+                        _message.value = "It's a draw!"
                     }
                 }
             }
         }
     }
 
+    // Checks if the board is completely full.
     private fun isBoardFull(board: Connect4Board): Boolean {
         return board.cells.all { row -> row.all { it != 0 } }
     }
 
+    /**
+     * Checks if there is a winner on the given board.
+     * @param board The Connect4Board to check.
+     * @return The player number (1 or 2) if a winner is found, otherwise 0.
+     */
     private fun checkWinner(board: Connect4Board): Int {
         val rows = board.rows
         val columns = board.columns
 
-        // Check horizontal
+        // Check horizontal wins.
         for (r in 0 until rows) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -135,7 +168,7 @@ class OfflineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check vertical
+        // Check vertical wins.
         for (c in 0 until columns) {
             for (r in 0..rows - 4) {
                 val value = board.getCell(r, c)
@@ -147,7 +180,7 @@ class OfflineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check diagonal (top-left to bottom-right)
+        // Check diagonal wins (top-left to bottom-right).
         for (r in 0..rows - 4) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -159,7 +192,7 @@ class OfflineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check diagonal (bottom-left to top-right)
+        // Check diagonal wins (bottom-left to top-right).
         for (r in 3 until rows) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -170,6 +203,6 @@ class OfflineConnect4ViewModel : ViewModel() {
                 ) return value
             }
         }
-        return 0
+        return 0 // No winner found.
     }
 }

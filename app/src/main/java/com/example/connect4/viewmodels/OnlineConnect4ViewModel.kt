@@ -18,44 +18,70 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlin.random.Random
 
+// ViewModel for managing online Connect4 game logic and interactions with Firebase.
 class OnlineConnect4ViewModel : ViewModel() {
+    // Board dimensions.
     private val boardRows = 6
     private val boardColumns = 7
+    // Initial state of the board cells.
     private val initialBoardCells = List(boardRows) { List(boardColumns) { 0 } }
 
+    // Firebase Authentication instance.
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    // Firebase Firestore instance.
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    // Listener registration for real-time game updates.
     private var gameListener: ListenerRegistration? = null
 
+    // MutableStateFlow for the game board.
     private val _board = MutableStateFlow(Connect4Board(initialBoardCells))
+    // Public StateFlow for observing the game board.
     val board: StateFlow<Connect4Board> = _board.asStateFlow()
 
+    // MutableStateFlow for the current player (1 or 2).
     private val _currentPlayer = MutableStateFlow(1)
+    // Public StateFlow for observing the current player.
     val currentPlayer: StateFlow<Int> = _currentPlayer.asStateFlow()
 
+    // MutableStateFlow for the current game state.
     private val _gameState = MutableStateFlow<GameState>(GameState.WaitingToStart)
+    // Public StateFlow for observing the game state.
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
+    // MutableStateFlow for the current user's ID.
     private val _currentUserId = MutableStateFlow<String?>(null)
+    // Public StateFlow for observing the current user's ID.
     val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
 
+    // MutableStateFlow for the online game object.
     private val _onlineGame = MutableStateFlow<OnlineGame?>(null)
+    // Public StateFlow for observing the online game.
     val onlineGame: StateFlow<OnlineGame?> = _onlineGame.asStateFlow()
 
+    // MutableStateFlow to indicate if it's the current user's turn.
     private val _isMyTurn = MutableStateFlow(false)
+    // Public StateFlow for observing if it's the current user's turn.
     val isMyTurn: StateFlow<Boolean> = _isMyTurn.asStateFlow()
 
+    // MutableStateFlow for displaying messages to the user.
     private val _message = MutableStateFlow<String?>(null)
+    // Public StateFlow for observing messages.
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    // MutableStateFlow to indicate loading state.
     private val _isLoading = MutableStateFlow(false)
+    // Public StateFlow for observing loading state.
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _answerAttempt = MutableStateFlow("") // Para el intento de respuesta del usuario en la UI
+    // MutableStateFlow for the user's answer attempt to a vocabulary question.
+    private val _answerAttempt = MutableStateFlow("")
+    // Public StateFlow for observing the answer attempt.
     val answerAttempt: StateFlow<String> = _answerAttempt.asStateFlow()
 
+    // Gson instance for JSON serialization/deserialization.
     private val gson = Gson()
 
+    // Initializes the ViewModel, setting up an authentication state listener.
     init {
         auth.addAuthStateListener { firebaseAuth ->
             _currentUserId.value = firebaseAuth.currentUser?.uid
@@ -68,7 +94,7 @@ class OnlineConnect4ViewModel : ViewModel() {
         }
     }
 
-    // This reset is specifically for the online game state
+    // Resets the online game state. Only the game creator can reset.
     fun resetOnlineGame() {
         val game = _onlineGame.value ?: return
         val currentUid = _currentUserId.value ?: return
@@ -87,65 +113,76 @@ class OnlineConnect4ViewModel : ViewModel() {
                         questionAskedToPlayerId = null // Reset who was asked
                     )
                     db.collection("onlineGames").document(game.gameId).set(updatedGame).await()
-                    _message.value = "Partida reiniciada."
-                    Log.d("OnlineConnect4ViewModel", "Partida online ${game.gameId} reiniciada por ${currentUid}")
+                    _message.value = "Game reset."
+                    Log.d("OnlineConnect4ViewModel", "Online game ${game.gameId} reset by ${currentUid}")
                 } catch (e: Exception) {
-                    _message.value = "Error al reiniciar la partida: ${e.localizedMessage}"
-                    Log.e("OnlineConnect4ViewModel", "Error al reiniciar online game: ${e.localizedMessage}")
+                    _message.value = "Error resetting game: ${e.localizedMessage}"
+                    Log.e("OnlineConnect4ViewModel", "Error resetting online game: ${e.localizedMessage}")
                 } finally {
                     _isLoading.value = false
                 }
             }
         } else {
-            _message.value = "Solo el creador de la partida puede reiniciarla."
+            _message.value = "Only the game creator can reset the game."
         }
     }
 
+    /**
+     * Attempts to drop a piece into the specified column.
+     * Checks for game state, current player, and vocabulary question status.
+     * @param column The column where the piece will be dropped.
+     */
     fun dropPiece(column: Int) {
         viewModelScope.launch {
             val game = _onlineGame.value
             val currentUid = _currentUserId.value
 
             if (game == null || currentUid == null) {
-                _message.value = "No estás en una partida online activa."
-                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): No hay partida online activa.")
+                _message.value = "You are not in an active online game."
+                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): No active online game.")
                 return@launch
             }
 
+            // Check if it's the current player's turn and game is playing.
             if (game.currentPlayerId != currentUid || game.status != "playing") {
-                _message.value = "No es tu turno o la partida no está activa."
-                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): No es turno o no activa. GameState: ${_gameState.value}")
+                _message.value = "It's not your turn or the game is not active."
+                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): Not turn or not active. GameState: ${_gameState.value}")
                 return@launch
             }
 
-            // AÑADIR: Comprobar si la pregunta ha sido respondida correctamente
+            // Check if a vocabulary question is active and not correctly answered.
             if (game.currentQuestionWord != null && game.questionAnsweredCorrectly != true) {
-                _message.value = "Debes responder la pregunta de vocabulario para poder mover."
-                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): Pregunta no respondida correctamente. questionAnsweredCorrectly=${game.questionAnsweredCorrectly}")
+                _message.value = "You must answer the vocabulary question to make a move."
+                Log.d("OnlineConnect4ViewModel", "DropPiece (Online): Question not answered correctly. questionAnsweredCorrectly=${game.questionAnsweredCorrectly}")
                 return@launch
             }
 
-            // Si la pregunta ha sido respondida correctamente o no hay pregunta, procede con el movimiento
+            // If the question has been answered correctly or no question, proceed with the move.
             proceedWithDropPiece(column)
         }
     }
 
+    /**
+     * Proceeds with dropping a piece after all checks (turn, question) have passed.
+     * Updates the board, checks for winner/draw, and updates game state in Firestore.
+     * @param column The column where the piece will be dropped.
+     */
     fun proceedWithDropPiece(column: Int) {
         viewModelScope.launch {
             val game = _onlineGame.value
             val currentUid = _currentUserId.value
             if (game == null || currentUid == null) {
-                Log.e("OnlineConnect4ViewModel", "proceedWithDropPiece llamado con onlineGame o currentUid null. Esto es un error en la lógica de llamadas.")
+                Log.e("OnlineConnect4ViewModel", "proceedWithDropPiece called with onlineGame or currentUid null. This is a logic error.")
                 return@launch
             }
             if (game.currentPlayerId != currentUid) {
-                _message.value = "No es tu turno."
-                Log.d("OnlineConnect4ViewModel", "ProceedDropPiece: No es tu turno. CurrentPlayerId: ${game.currentPlayerId}, CurrentUid: $currentUid")
+                _message.value = "It's not your turn."
+                Log.d("OnlineConnect4ViewModel", "ProceedDropPiece: Not your turn. CurrentPlayerId: ${game.currentPlayerId}, CurrentUid: $currentUid")
                 return@launch
             }
             val currentBoard = Connect4Board(game.boardCells)
             if (currentBoard.getCell(0, column) != 0) {
-                _message.value = "Columna llena. Elige otra."
+                _message.value = "Column is full. Choose another one."
                 return@launch
             }
             val playerNum = if (game.player1Id == currentUid) 1 else 2
@@ -160,7 +197,7 @@ class OnlineConnect4ViewModel : ViewModel() {
             }
             val newWinnerId = if (winner != 0) currentUid else null
 
-            // Update the game state in Firestore after the move
+            // Update the game state in Firestore after the move.
             val updatedGame = game.copy(
                 boardCellsJson = gson.toJson(newBoard.cells),
                 currentPlayerId = if (newStatus == "playing") nextPlayerId else null,
@@ -173,27 +210,33 @@ class OnlineConnect4ViewModel : ViewModel() {
                 questionAskedToPlayerId = null // Reset who was asked
             )
             db.collection("onlineGames").document(game.gameId).set(updatedGame).await()
-            Log.d("OnlineConnect4ViewModel", "Pieza soltada en online game ${game.gameId} por $currentUid en columna $column. Nuevo estado: $newStatus")
+            Log.d("OnlineConnect4ViewModel", "Piece dropped in online game ${game.gameId} by $currentUid in column $column. New status: $newStatus")
 
-            // If the game is still playing, ask a new question to the next player
+            // If the game is still playing, ask a new question to the next player.
             if (newStatus == "playing") {
-                Log.d("OnlineConnect4ViewModel", "Juego sigue jugando. Preguntando nueva palabra al siguiente jugador: ${nextPlayerId}")
+                Log.d("OnlineConnect4ViewModel", "Game still playing. Asking new word to next player: ${nextPlayerId}")
                 nextPlayerId?.let { fetchRandomVocabularyWord(game.gameId, it) }
             } else {
-                Log.d("OnlineConnect4ViewModel", "Juego ha terminado o está en empate. No se preguntará nueva palabra.")
+                Log.d("OnlineConnect4ViewModel", "Game has ended or is a draw. No new word will be asked.")
             }
         }
     }
 
+    // Checks if the board is completely full.
     private fun isBoardFull(board: Connect4Board): Boolean {
         return board.cells.all { row -> row.all { it != 0 } }
     }
 
+    /**
+     * Checks if there is a winner on the given board.
+     * @param board The Connect4Board to check.
+     * @return The player number (1 or 2) if a winner is found, otherwise 0.
+     */
     private fun checkWinner(board: Connect4Board): Int {
         val rows = board.rows
         val columns = board.columns
 
-        // Check horizontal
+        // Check horizontal wins.
         for (r in 0 until rows) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -205,7 +248,7 @@ class OnlineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check vertical
+        // Check vertical wins.
         for (c in 0 until columns) {
             for (r in 0..rows - 4) {
                 val value = board.getCell(r, c)
@@ -217,7 +260,7 @@ class OnlineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check diagonal (top-left to bottom-right)
+        // Check diagonal wins (top-left to bottom-right).
         for (r in 0..rows - 4) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -229,7 +272,7 @@ class OnlineConnect4ViewModel : ViewModel() {
             }
         }
 
-        // Check diagonal (bottom-left to top-right)
+        // Check diagonal wins (bottom-left to top-right).
         for (r in 3 until rows) {
             for (c in 0..columns - 4) {
                 val value = board.getCell(r, c)
@@ -240,17 +283,18 @@ class OnlineConnect4ViewModel : ViewModel() {
                 ) return value
             }
         }
-        return 0
+        return 0 // No winner found.
     }
 
+    // Creates a new online game in Firestore.
     fun createOnlineGame() {
         val currentUid = _currentUserId.value
         if (currentUid == null) {
-            _message.value = "Debes iniciar sesión para crear una partida."
+            _message.value = "You must be logged in to create a game."
             return
         }
         _isLoading.value = true
-        _message.value = "Creando partida online..."
+        _message.value = "Creating online game..."
         viewModelScope.launch {
             try {
                 val userDoc = db.collection("users").document(currentUid).get().await()
@@ -267,43 +311,47 @@ class OnlineConnect4ViewModel : ViewModel() {
                 db.collection("onlineGames").document(gameId).update("gameId", gameId).await()
                 _onlineGame.value = newGame.copy(gameId = gameId)
                 startListeningForGameUpdates(gameId)
-                _message.value = "Partida creada con ID: $gameId. Esperando oponente..."
+                _message.value = "Game created with ID: $gameId. Waiting for opponent..."
                 _gameState.value = GameState.WaitingToStart
-                Log.d("OnlineConnect4ViewModel", "Partida online ${gameId} creada por ${currentUid}")
+                Log.d("OnlineConnect4ViewModel", "Online game ${gameId} created by ${currentUid}")
             } catch (e: Exception) {
-                _message.value = "Error al crear la partida: ${e.localizedMessage}"
-                Log.e("OnlineConnect4ViewModel", "Error al crear online game: ${e.localizedMessage}")
+                _message.value = "Error creating game: ${e.localizedMessage}"
+                Log.e("OnlineConnect4ViewModel", "Error creating online game: ${e.localizedMessage}")
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
+    /**
+     * Joins an existing online game.
+     * @param gameId The ID of the game to join.
+     */
     fun joinOnlineGame(gameId: String) {
         val currentUid = _currentUserId.value
         if (currentUid == null) {
-            _message.value = "Debes iniciar sesión para unirte a una partida."
+            _message.value = "You must be logged in to join a game."
             return
         }
         _isLoading.value = true
-        _message.value = "Uniéndose a la partida $gameId..."
+        _message.value = "Joining game $gameId..."
         viewModelScope.launch {
             try {
                 val gameDoc = db.collection("onlineGames").document(gameId).get().await()
                 val game = gameDoc.toObject(OnlineGame::class.java)
                 if (game == null) {
-                    _message.value = "Partida no encontrada."
+                    _message.value = "Game not found."
                     return@launch
                 }
                 if (game.player1Id == currentUid) {
-                    _message.value = "Ya eres el jugador 1 en esta partida."
+                    _message.value = "You are already Player 1 in this game."
                     _onlineGame.value = game
                     startListeningForGameUpdates(gameId)
                     _gameState.value = GameState.WaitingToStart
                     return@launch
                 }
                 if (game.player2Id != null) {
-                    _message.value = "La partida ya está llena."
+                    _message.value = "The game is already full."
                     return@launch
                 }
                 val userDoc = db.collection("users").document(currentUid).get().await()
@@ -316,51 +364,55 @@ class OnlineConnect4ViewModel : ViewModel() {
                 db.collection("onlineGames").document(gameId).set(updatedGame).await()
                 _onlineGame.value = updatedGame
                 startListeningForGameUpdates(gameId)
-                _message.value = "Te has unido a la partida $gameId. ¡Que empiece el juego!"
+                _message.value = "You have joined game $gameId. Let the game begin!"
                 _gameState.value = GameState.Playing // Game starts now
 
-                // AÑADIR: Al unirse el segundo jugador y la partida pasa a "playing", se le hace la primera pregunta al player1
+                // Ask the first question to Player 1 when the second player joins and game starts.
                 Log.d("OnlineConnect4ViewModel", "Player 2 joined. Asking first question to Player 1: ${game.player1Id}")
                 fetchRandomVocabularyWord(gameId, game.player1Id)
 
             } catch (e: Exception) {
-                _message.value = "Error al unirse a la partida: ${e.localizedMessage}"
-                Log.e("OnlineConnect4ViewModel", "Error al unirse a online game: ${e.localizedMessage}")
+                _message.value = "Error joining game: ${e.localizedMessage}"
+                Log.e("OnlineConnect4ViewModel", "Error joining online game: ${e.localizedMessage}")
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
+    /**
+     * Starts listening for real-time updates to an online game document in Firestore.
+     * @param gameId The ID of the game to listen to.
+     */
     fun startListeningForGameUpdates(gameId: String) {
         stopListeningForGameUpdates()
         gameListener = db.collection("onlineGames").document(gameId)
             .addSnapshotListener { snapshot, e ->
                 if (e != null) {
-                    _message.value = "Error al escuchar la partida: ${e.localizedMessage}"
-                    Log.e("OnlineConnect4ViewModel", "Error en listener de partida: ${e.localizedMessage}")
+                    _message.value = "Error listening to game: ${e.localizedMessage}"
+                    Log.e("OnlineConnect4ViewModel", "Error in game listener: ${e.localizedMessage}")
                     return@addSnapshotListener
                 }
                 if (snapshot != null && snapshot.exists()) {
                     val game = snapshot.toObject(OnlineGame::class.java)
                     game?.let {
-                        Log.d("OnlineConnect4ViewModel", "Actualización de partida recibida: GameId=${it.gameId}, CurrentPlayerId=${it.currentPlayerId}, QuestionWord=${it.currentQuestionWord}, QuestionTranslation=${it.currentQuestionTranslation}, QuestionAnsweredCorrectly=${it.questionAnsweredCorrectly}, QuestionAskedToPlayerId=${it.questionAskedToPlayerId}, Status=${it.status}")
+                        Log.d("OnlineConnect4ViewModel", "Game update received: GameId=${it.gameId}, CurrentPlayerId=${it.currentPlayerId}, QuestionWord=${it.currentQuestionWord}, QuestionTranslation=${it.currentQuestionTranslation}, QuestionAnsweredCorrectly=${it.questionAnsweredCorrectly}, QuestionAskedToPlayerId=${it.questionAskedToPlayerId}, Status=${it.status}")
 
                         _onlineGame.value = it
                         _board.value = Connect4Board(it.boardCells)
                         _currentPlayer.value = if (it.currentPlayerId == it.player1Id) 1 else 2
                         val currentUid = _currentUserId.value
 
-                        // Determine if it's YOUR turn and if you need to answer a question
+                        // Determine if it's YOUR turn and if you need to answer a question.
                         val isCurrentPlayerMyTurn = it.currentPlayerId == currentUid && it.status == "playing"
                         _isMyTurn.value = isCurrentPlayerMyTurn
 
-                        // Lógica para el estado del juego con preguntas
+                        // Logic for game state with questions.
                         _gameState.value = when (it.status) {
                             "waiting" -> GameState.WaitingToStart
                             "playing" -> {
-                                // Si hay una palabra, es tu turno y no ha sido respondida, se pregunta.
-                                // O si es el turno del oponente y se le acaba de hacer una pregunta.
+                                // If there's a word, it's your turn, and it hasn't been answered, ask.
+                                // Or if it's the opponent's turn and a question was just asked to them.
                                 if (it.currentQuestionWord != null && it.questionAskedToPlayerId == currentUid && (it.questionAnsweredCorrectly == null || it.questionAnsweredCorrectly == false)) {
                                     Log.d("OnlineConnect4ViewModel", "GameState changed to AskingQuestion for current user.")
                                     GameState.AskingQuestion(it.currentQuestionWord)
@@ -380,53 +432,55 @@ class OnlineConnect4ViewModel : ViewModel() {
                             else -> GameState.Playing // Fallback
                         }
 
-                        // UI Messages based on current state
+                        // UI Messages based on current state.
                         when (it.status) {
                             "waiting" -> {
-                                if (it.player1Id == currentUid) _message.value = "Esperando oponente para la partida ${it.gameId}..."
-                                else _message.value = "Esperando que el jugador 1 inicie la partida..."
+                                if (it.player1Id == currentUid) _message.value = "Waiting for opponent for game ${it.gameId}..."
+                                else _message.value = "Waiting for Player 1 to start the game..."
                             }
                             "playing" -> {
                                 if (it.currentPlayerId == currentUid) {
                                     if (it.currentQuestionWord != null && (it.questionAnsweredCorrectly == null || it.questionAnsweredCorrectly == false)) {
-                                        _message.value = "¡Es tu turno! Responde la pregunta para mover."
+                                        _message.value = "It's your turn! Answer the question to move."
                                     } else if (it.currentQuestionWord != null && it.questionAnsweredCorrectly == true) {
-                                        _message.value = "Respuesta correcta. ¡Ahora haz tu movimiento!"
+                                        _message.value = "Correct answer. Now make your move!"
                                     }
                                     else {
-                                        _message.value = "¡Es tu turno! Haz tu movimiento."
+                                        _message.value = "It's your turn! Make your move."
                                     }
                                 } else {
                                     val opponentName = if (currentUid == it.player1Id) it.player2Name else it.player1Name
                                     if (it.currentQuestionWord != null && (it.questionAnsweredCorrectly == null || it.questionAnsweredCorrectly == false) && it.questionAskedToPlayerId == it.currentPlayerId) {
-                                        _message.value = "Turno de ${opponentName ?: "oponente"}. Esperando respuesta a la pregunta..."
+                                        _message.value = "Turn of ${opponentName ?: "opponent"}. Waiting for question answer..."
                                     } else {
-                                        _message.value = "Turno de ${opponentName ?: "oponente"}..."
+                                        _message.value = "Turn of ${opponentName ?: "opponent"}..."
                                     }
                                 }
                             }
                             "finished" -> {
-                                if (it.winnerId == currentUid) _message.value = "¡Has ganado la partida!"
-                                else _message.value = "Has perdido. Ganador: ${it.winnerId}"
+                                if (it.winnerId == currentUid) _message.value = "You have won the game!"
+                                else _message.value = "You lost. Winner: ${it.winnerId}"
                             }
-                            "draw" -> _message.value = "La partida ha terminado en empate."
+                            "draw" -> _message.value = "The game ended in a draw."
                         }
                     }
                 } else {
-                    _message.value = "La partida ya no existe."
+                    _message.value = "The game no longer exists."
                     _onlineGame.value = null
-                    _gameState.value = GameState.WaitingToStart // Back to a state where a new game can be started or joined
-                    Log.d("OnlineConnect4ViewModel", "Partida online no existe o fue eliminada. Volviendo a estado de espera.")
+                    _gameState.value = GameState.WaitingToStart // Back to a state where a new game can be started or joined.
+                    Log.d("OnlineConnect4ViewModel", "Online game does not exist or was deleted. Returning to waiting state.")
                 }
             }
     }
 
+    // Stops listening for real-time game updates.
     fun stopListeningForGameUpdates() {
         gameListener?.remove()
         gameListener = null
-        Log.d("OnlineConnect4ViewModel", "Dejando de escuchar actualizaciones de partida.")
+        Log.d("OnlineConnect4ViewModel", "Stopped listening for game updates.")
     }
 
+    // Deletes the current online game. Only the game creator can delete it.
     fun deleteOnlineGame() {
         val game = _onlineGame.value ?: return
         val currentUid = _currentUserId.value ?: return
@@ -435,35 +489,44 @@ class OnlineConnect4ViewModel : ViewModel() {
             viewModelScope.launch {
                 try {
                     db.collection("onlineGames").document(game.gameId).delete().await()
-                    _message.value = "Partida eliminada."
-                    // Do not call resetGame() from the offline viewmodel here.
-                    // Instead, explicitly reset online-specific state
+                    _message.value = "Game deleted."
+                    // Explicitly reset online-specific state.
                     _onlineGame.value = null
                     _board.value = Connect4Board(initialBoardCells)
                     _currentPlayer.value = 1
-                    _gameState.value = GameState.WaitingToStart // Return to initial online state
-                    Log.d("OnlineConnect4ViewModel", "Partida ${game.gameId} eliminada por ${currentUid}.")
+                    _gameState.value = GameState.WaitingToStart // Return to initial online state.
+                    Log.d("OnlineConnect4ViewModel", "Game ${game.gameId} deleted by ${currentUid}.")
                 } catch (e: Exception) {
-                    _message.value = "Error al eliminar la partida: ${e.localizedMessage}"
-                    Log.e("OnlineConnect4ViewModel", "Error al eliminar online game: ${e.localizedMessage}")
+                    _message.value = "Error deleting game: ${e.localizedMessage}"
+                    Log.e("OnlineConnect4ViewModel", "Error deleting online game: ${e.localizedMessage}")
                 } finally {
                     _isLoading.value = false
                 }
             }
         } else {
-            _message.value = "Solo el creador de la partida puede eliminarla."
+            _message.value = "Only the game creator can delete the game."
         }
     }
 
-    // NUEVAS FUNCIONES PARA EL SISTEMA DE VOCABULARIO
+    // VOCABULARY SYSTEM FUNCTIONS
 
+    /**
+     * Sets the user's answer attempt for the vocabulary question.
+     * @param answer The user's typed answer.
+     */
     fun setAnswerAttempt(answer: String) {
         _answerAttempt.value = answer
     }
 
+    /**
+     * Fetches a random vocabulary word from Firestore and updates the online game document.
+     * This word will be presented as a question to the specified player.
+     * @param gameId The ID of the online game.
+     * @param playerIdAsking The ID of the player who will be asked the question.
+     */
     private suspend fun fetchRandomVocabularyWord(gameId: String, playerIdAsking: String) {
         _isLoading.value = true
-        Log.d("OnlineConnect4ViewModel", "Intentando obtener palabra de vocabulario para playerId: $playerIdAsking")
+        Log.d("OnlineConnect4ViewModel", "Attempting to get vocabulary word for playerId: $playerIdAsking")
         viewModelScope.launch {
             try {
                 val vocabularyCollection = db.collection("vocabulary")
@@ -479,12 +542,12 @@ class OnlineConnect4ViewModel : ViewModel() {
                         "questionAnsweredCorrectly", null, // Reset status for new question
                         "questionAskedToPlayerId", playerIdAsking // Store who was asked
                     ).await()
-                    Log.d("OnlineConnect4ViewModel", "Palabra obtenida y actualizada en Firestore para $playerIdAsking: ${randomWord.word} -> ${randomWord.translation}")
-                    // No update _message here. The message will be set by the listener
+                    Log.d("OnlineConnect4ViewModel", "Word obtained and updated in Firestore for $playerIdAsking: ${randomWord.word} -> ${randomWord.translation}")
+                    // Message will be set by the listener.
                 } else {
-                    _message.value = "No se encontraron palabras de vocabulario. El juego continuará sin preguntas."
+                    _message.value = "No vocabulary words found. Game will continue without questions."
                     Log.w("OnlineConnect4ViewModel", "No vocabulary words found in Firestore. Proceeding without question for $playerIdAsking.")
-                    // If no words, allow the game to proceed without a question
+                    // If no words, allow the game to proceed without a question.
                     val gameRef = db.collection("onlineGames").document(gameId)
                     gameRef.update(
                         "questionAnsweredCorrectly", true, // Assume correct if no question
@@ -492,9 +555,9 @@ class OnlineConnect4ViewModel : ViewModel() {
                     ).await()
                 }
             } catch (e: Exception) {
-                _message.value = "Error al obtener palabra de vocabulario: ${e.localizedMessage}"
+                _message.value = "Error fetching vocabulary word: ${e.localizedMessage}"
                 Log.e("OnlineConnect4ViewModel", "Error fetching vocabulary word for $playerIdAsking: ${e.localizedMessage}")
-                // In case of error, assume correct to avoid blocking the game
+                // In case of error, assume correct to avoid blocking the game.
                 val gameRef = db.collection("onlineGames").document(gameId)
                 gameRef.update(
                     "questionAnsweredCorrectly", true,
@@ -506,17 +569,18 @@ class OnlineConnect4ViewModel : ViewModel() {
         }
     }
 
+    // Submits the user's answer to the vocabulary question.
     fun submitAnswer() {
         viewModelScope.launch {
             val game = _onlineGame.value
             val currentUid = _currentUserId.value
             if (game == null || currentUid == null || game.currentQuestionWord == null || game.currentQuestionTranslation == null) {
-                _message.value = "No hay una pregunta activa para responder."
+                _message.value = "No active question to answer."
                 Log.d("OnlineConnect4ViewModel", "SubmitAnswer: No active question or game state invalid.")
                 return@launch
             }
             if (game.currentPlayerId != currentUid) {
-                _message.value = "No es tu turno para responder."
+                _message.value = "It's not your turn to answer."
                 Log.d("OnlineConnect4ViewModel", "SubmitAnswer: Not current player's turn to answer. CurrentPlayerId: ${game.currentPlayerId}, CurrentUid: $currentUid")
                 return@launch
             }
@@ -529,29 +593,29 @@ class OnlineConnect4ViewModel : ViewModel() {
                 if (isCorrect) {
                     gameRef.update(
                         "questionAnsweredCorrectly", true
-                        // Keep currentQuestionWord and Translation until move is made for display
-                        // Don't change currentPlayerId yet
+                        // Keep currentQuestionWord and Translation until move is made for display.
+                        // Don't change currentPlayerId yet.
                     ).await()
-                    Log.d("OnlineConnect4ViewModel", "Respuesta CORRECTA de $currentUid. Ahora puede mover.")
-                    _message.value = "¡Respuesta correcta! Ahora puedes hacer tu movimiento."
-                    _answerAttempt.value = "" // Clear the input field
+                    Log.d("OnlineConnect4ViewModel", "CORRECT answer by $currentUid. Now can move.")
+                    _message.value = "Correct answer! Now you can make your move."
+                    _answerAttempt.value = "" // Clear the input field.
                 } else {
                     val nextPlayerId = if (game.player1Id == currentUid) game.player2Id else game.player1Id
                     gameRef.update(
                         "questionAnsweredCorrectly", false,
-                        "currentPlayerId", nextPlayerId, // Pass turn
-                        "currentQuestionWord", null, // Clear question
-                        "currentQuestionTranslation", null, // Clear translation
-                        "questionAskedToPlayerId", null // Clear who was asked
+                        "currentPlayerId", nextPlayerId, // Pass turn.
+                        "currentQuestionWord", null, // Clear question.
+                        "currentQuestionTranslation", null, // Clear translation.
+                        "questionAskedToPlayerId", null // Clear who was asked.
                     ).await()
-                    Log.d("OnlineConnect4ViewModel", "Respuesta INCORRECTA de $currentUid. Turno pasado a $nextPlayerId.")
-                    _message.value = "Respuesta incorrecta. Turno pasado al oponente."
-                    _answerAttempt.value = "" // Clear the input field
-                    // Automatically fetch new question for the next player
+                    Log.d("OnlineConnect4ViewModel", "INCORRECT answer by $currentUid. Turn passed to $nextPlayerId.")
+                    _message.value = "Incorrect answer. Turn passed to opponent."
+                    _answerAttempt.value = "" // Clear the input field.
+                    // Automatically fetch new question for the next player.
                     nextPlayerId?.let { fetchRandomVocabularyWord(game.gameId, it) }
                 }
             } catch (e: Exception) {
-                _message.value = "Error al enviar respuesta: ${e.localizedMessage}"
+                _message.value = "Error submitting answer: ${e.localizedMessage}"
                 Log.e("OnlineConnect4ViewModel", "Error submitting answer by $currentUid: ${e.localizedMessage}")
             } finally {
                 _isLoading.value = false
@@ -559,9 +623,10 @@ class OnlineConnect4ViewModel : ViewModel() {
         }
     }
 
+    // Called when the ViewModel is no longer used, stops the game listener.
     override fun onCleared() {
         super.onCleared()
         stopListeningForGameUpdates()
-        Log.d("OnlineConnect4ViewModel", "ViewModel onCleared. Listener detenido.")
+        Log.d("OnlineConnect4ViewModel", "ViewModel onCleared. Listener stopped.")
     }
 }

@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.connect4.models.GameState
 import com.example.connect4.viewmodels.OfflineConnect4ViewModel
-import com.example.connect4.views.shared.BoardView // Importar el BoardView compartido
-import com.example.connect4.views.shared.PlayerInfo // Importar el PlayerInfo compartido
+import com.example.connect4.views.shared.BoardView // Import the shared BoardView.
+import com.example.connect4.views.shared.PlayerInfo // Import the shared PlayerInfo.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,18 +26,21 @@ fun OfflineConnect4GameScreen(
     onNavigateBackToLobby: () -> Unit,
     offlineConnect4ViewModel: OfflineConnect4ViewModel = viewModel()
 ) {
+    // Collect states from the OfflineConnect4ViewModel.
     val board by offlineConnect4ViewModel.board.collectAsState()
     val currentPlayer by offlineConnect4ViewModel.currentPlayer.collectAsState()
     val gameState by offlineConnect4ViewModel.gameState.collectAsState()
     val message by offlineConnect4ViewModel.message.collectAsState()
 
+    // Determine the message to display based on the game state.
     val displayMessage = when (gameState) {
-        is GameState.Winner -> "¡El Jugador ${(gameState as GameState.Winner).player} ha ganado!"
-        GameState.Draw -> "¡Es un empate!"
-        GameState.Playing -> "Turno del Jugador $currentPlayer"
-        else -> "Preparando partida..."
+        is GameState.Winner -> "Player ${(gameState as GameState.Winner).player} has won!"
+        GameState.Draw -> "It's a draw!"
+        GameState.Playing -> "Player $currentPlayer's turn"
+        else -> "Preparing game..."
     }
 
+    // Determine the text color for the message.
     val textColor = when (gameState) {
         is GameState.Winner -> if ((gameState as GameState.Winner).player == 1) Color.Red else Color.Yellow
         GameState.Draw -> Color.Gray
@@ -47,16 +50,16 @@ fun OfflineConnect4GameScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Conecta 4 (Offline)", color = Color.White) },
+                title = { Text("Connect 4 (Offline)", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBackToLobby) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver al Lobby", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to Lobby", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF2C3E50))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF2C3E50)) // Dark blue top app bar.
             )
         },
-        containerColor = Color(0xFF2C3E50) // Fondo de la pantalla
+        containerColor = Color(0xFF2C3E50) // Dark blue screen background.
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -67,6 +70,7 @@ fun OfflineConnect4GameScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Display game status message.
                 Text(
                     text = displayMessage,
                     color = textColor,
@@ -75,21 +79,21 @@ fun OfflineConnect4GameScreen(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                // Información de jugadores para el modo offline (simplificada)
+                // Player information for offline mode (simplified).
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     PlayerInfo(
-                        playerName = "Jugador 1",
+                        playerName = "Player 1",
                         isCurrentPlayer = currentPlayer == 1,
-                        isMe = true, // Consideramos al jugador humano como "Tú" en offline
+                        isMe = true, // Human player is "You" in offline mode.
                         playerColor = Color.Red
                     )
                     Text("vs", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 8.dp))
                     PlayerInfo(
-                        playerName = "IA",
+                        playerName = "AI",
                         isCurrentPlayer = currentPlayer == 2,
                         isMe = false,
                         playerColor = Color.Yellow
@@ -99,10 +103,12 @@ fun OfflineConnect4GameScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            // Display the Connect4 game board.
             BoardView(
                 board = board.cells,
                 onColumnClick = { col ->
-                    if (gameState == GameState.Playing && currentPlayer == 1) { // Solo Jugador 1 puede clickear
+                    // Only allow Player 1 to click when the game is playing.
+                    if (gameState == GameState.Playing && currentPlayer == 1) {
                         offlineConnect4ViewModel.dropPiece(col)
                     }
                 }
@@ -110,6 +116,7 @@ fun OfflineConnect4GameScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Buttons for game actions based on game state.
             when (gameState) {
                 is GameState.Winner, GameState.Draw -> {
                     Button(
@@ -117,22 +124,22 @@ fun OfflineConnect4GameScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27AE60)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27AE60)), // Green button for "Play Again".
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Jugar de Nuevo", fontSize = 18.sp, color = Color.White)
+                        Text("Play Again", fontSize = 18.sp, color = Color.White)
                     }
                 }
-                else -> { // GameState.Playing or WaitingToStart
+                else -> { // GameState.Playing or WaitingToStart.
                     Button(
                         onClick = { offlineConnect4ViewModel.resetGame() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE74C3C)), // Red button for "Restart Game".
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Reiniciar Partida", fontSize = 18.sp, color = Color.White)
+                        Text("Restart Game", fontSize = 18.sp, color = Color.White)
                     }
                 }
             }

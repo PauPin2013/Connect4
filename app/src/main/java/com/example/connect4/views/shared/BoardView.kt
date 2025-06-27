@@ -18,19 +18,25 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun BoardView(board: List<List<Int>>, onColumnClick: (Int) -> Unit) {
+    // Define un tamaño base para los círculos. Experimenta con este valor.
+    val circleBaseSize = 40.dp // Antes 48.dp
+    val innerCircleSize = 34.dp // Antes 40.dp (un poco más pequeño para el círculo interno)
+    val circlePadding = 3.dp // Antes 4.dp (reduce el padding entre círculos)
+
+
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF3498DB)) // Color del tablero
-            .padding(8.dp)
+            .padding(4.dp) // Reduce el padding general del tablero si lo deseas
     ) {
         board.forEachIndexed { rowIdx, row ->
             Row {
                 row.forEachIndexed { colIdx, cell ->
                     Box(
                         modifier = Modifier
-                            .padding(4.dp)
-                            .size(48.dp)
+                            .padding(circlePadding) // Padding entre los círculos
+                            .size(circleBaseSize) // Tamaño del área del agujero
                             .background(Color.DarkGray.copy(alpha = 0.5f), CircleShape) // Color del agujero (fondo)
                             .clickable {
                                 onColumnClick(colIdx)
@@ -39,7 +45,7 @@ fun BoardView(board: List<List<Int>>, onColumnClick: (Int) -> Unit) {
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(innerCircleSize) // Tamaño de la ficha o agujero vacío
                                 .background(
                                     when (cell) {
                                         1 -> Color.Red // Ficha Jugador 1
